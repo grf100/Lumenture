@@ -1,0 +1,2 @@
+../Core/Src/NTC_calculations.c:7:7:thermistorResistance	1
+../Core/Src/NTC_calculations.c:13:7:thermistorTemperature	1
