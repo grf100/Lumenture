@@ -21,7 +21,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
- uint16_t i;
  uint16_t dim_filt;
  uint16_t ntc_filt;
  uint16_t dim_adc;
@@ -31,7 +30,6 @@
  uint16_t duty_cycle;
  uint16_t duty_cycle_setpoint;
  uint16_t over_temp_duty_cycle;
- uint16_t otp_duty_filt;
  uint16_t ntc;
  uint16_t MCU_temperature;
  uint16_t temp;
@@ -41,29 +39,26 @@
  uint16_t start_derating = OTP_THRESHOLD;
  int16_t filter_out;
  uint16_t counter_filter;
- uint16_t otp_duty_setpoint;
 //volatile uint32_t sum;
 //volatile uint32_t in;
 //volatile uint32_t average;
 //volatile uint16_t alpha;
 volatile uint32_t dim_circ_buf[N(K)]; // The circular buffer is the filter register.
 volatile uint32_t ntc_circ_buf[N(K)]; // The circular buffer is the filter register.
-volatile uint32_t otp_circ_buf[N(K)]; // The circular buffer is the filter register.
+volatile uint32_t otp_circ_buf[N(K)];
 volatile uint32_t dim_sum = 0; // Sum of elements in the filter register.
 volatile uint32_t ntc_sum = 0; // Sum of elements in the filter register.
-volatile uint32_t otp_sum = 0; // Sum of elements in the filter register.
+volatile uint32_t otp_duty_cycle_sum = 0;
 volatile uint16_t circ_buf_ptr = 0; // Index for the circular buffer.
 volatile uint16_t otp_circ_buf_ptr = 0; // Index for the circular buffer.
-volatile float ntc_temp;
-volatile float ntc_resistance;
-volatile float ratio;
-volatile float T;
-volatile float test_var;
-volatile uint16_t otp_flag = 1;
-volatile uint16_t softstart = 0;
-volatile uint16_t otp_difference;
-volatile float derated_value;
+ float ntc_temp;
+ float ntc_resistance;
+ float ratio;
+ float T;
+ float otp_duty_cycle;
 
+ uint16_t otp_flag = 1;
+ uint16_t softstart = 0;
 //float start_dimming = 0.53 ; // in %
 //float start_derating = 80; // in °C
 //float stop_dimming = 0; // in %
@@ -234,19 +229,17 @@ int main(void)
 	  	  ntc_sum -= ntc_circ_buf[circ_buf_ptr]; // Subtract the oldest value from the sum.
 	  	  dim_circ_buf[circ_buf_ptr] = dim_adc; // Place the input in the filter register.
 	  	  ntc_circ_buf[circ_buf_ptr] = ntc_adc; // Place the input in the filter register.
-	  	  dim_sum += dim_circ_buf[circ_buf_ptr]; // Add the newest value to the sum.
-	  	  ntc_sum += ntc_circ_buf[circ_buf_ptr++]; // Add the newest value to the sum.
+	  	  dim_sum += dim_circ_buf[circ_buf_ptr]; // Ad the newest value to the sum.
+	  	  ntc_sum += ntc_circ_buf[circ_buf_ptr++]; // Ad the newest value to the sum.
 	  	  circ_buf_ptr %= N(K); // Increment the buffer keeping it in the range 0 to N-1;
 	  	  dim_filt = (uint16_t)(dim_sum >> K);
 	  	  ntc_filt = (uint16_t)(ntc_sum >> K);
 	  	  temp = dim_filt;
 
-		  if (dim_filt < 870)
-		  {
+		  if (dim_filt < 870){
 			  dim_filt = 0;
 		  }
-		  if (dim_filt != 0)
-		  {
+		  if (dim_filt != 0){
 		  dim_filt = dim_filt - 870; //Offset due to 1k resistor and 0.5mA current source
 		  dim_filt = dim_filt * 1.27;// set slope
 		  }
@@ -269,54 +262,20 @@ int main(void)
 
 	  	  duty_cycle = max_current[current_index] * dim_setpoint; //Timer1 period is 8192
 
-			 if ((duty_cycle_setpoint <= duty_cycle) && (ntc_temp < START_DERATING))
-			 {
+			 if ((duty_cycle_setpoint <= duty_cycle) && (ntc_temp < START_DERATING)){
 				 duty_cycle_setpoint++;
 				 percent_derating = 1;
 				 otp_flag = 1;
-				 otp_sum = 0;
 			 }
-			 if ((duty_cycle_setpoint > duty_cycle) && (ntc_temp < START_DERATING))
-			 {
+			 if ((duty_cycle_setpoint > duty_cycle) && (ntc_temp < START_DERATING)){
 			 	 duty_cycle_setpoint--;
 			 	percent_derating = 1;
 			 	otp_flag = 1;
-			 	otp_sum = 0;
 			 }
-			 if (ntc_temp > START_DERATING && ntc_temp < STOP_DERATING)
-			 	 {
-				 if (otp_flag == 1)
-				 {
-			 //			 	  			 for (i= 0; i <= N(K); i++)
-			 //			 	  			 {
-			 //			 	  				otp_sum -= otp_circ_buf[i];
-			 //			 	  				otp_circ_buf[i] = duty_cycle_setpoint;
-			 //			 	  				otp_sum += otp_circ_buf[i];
-			 //			 	  			 }
-			 //
-			 //			 	  			 otp_duty_filt = (uint16_t)(otp_sum >> K);
-			 //			 	  			 i = 0;
-			 		otp_duty_setpoint = duty_cycle_setpoint;
-			 		otp_flag = 0;
-			 		otp_circ_buf_ptr = 0;
-				 }
-
-//			     over_temp_duty_cycle = duty_cycle_setpoint;
-			 	 percent_derating = (ntc_temp * ORDINATE) + ABSCISSA;
-			 	 if (percent_derating > 1) percent_derating = 1;
-			 		 derated_value = (otp_duty_setpoint * percent_derating);
-			 		 otp_sum -=  otp_circ_buf[otp_circ_buf_ptr];
-			 		 otp_circ_buf[otp_circ_buf_ptr] = derated_value;
-			 		 otp_sum += otp_circ_buf[otp_circ_buf_ptr++];
-			 		 otp_circ_buf_ptr %= N(K);
-			 		 otp_duty_filt = (uint16_t)(otp_sum >> K);
-			 		 duty_cycle_setpoint = otp_duty_filt;
-			 	 }
 //			 HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_4);
 			 TIM1->CCR1 = duty_cycle_setpoint;   //Timer1 period is 8192
 
-	  	  switch (state)
-	  	  {
+	  	  switch (state) {
 	  	           case STANDBY:
 	  	           if (softstart < 9){
 	  	            duty_cycle_setpoint = duty_cycle;
@@ -333,7 +292,7 @@ int main(void)
 	  	          	break;
 	  	            case RUNNING:
 	  	            	softstart = 0;
-	  	  }
+	  	}
   }
 
 }
@@ -360,47 +319,26 @@ int main(void)
 			 //	  	  ntc_temp = thermistorTemperature(ntc_resistance);
 			 	  	  T =  1 / ((1 / T25) + ((log(ntc_resistance / R25)) / BETA));
 			 	  	  ntc_temp = T - 273.15; // Converting kelvin to celsius
-//			 	  	  if (ntc_temp > START_DERATING && ntc_temp < STOP_DERATING)
-//			 	  	  {
-//			 	  		  // derating slope calculation
-//			 	  		  if (otp_flag == 1)
-//			 	  		  {
+			 	  	  if (ntc_temp > START_DERATING && ntc_temp < STOP_DERATING){
+			 	  		  // derating slope calculation
+			 	  		  if (otp_flag == 1){
+			 				 over_temp_duty_cycle = duty_cycle_setpoint;
+			 				 otp_flag = 0;
+			 				 }
+			 				 percent_derating = ntc_temp * ORDINATE + ABSCISSA;
+			 				 if(percent_derating > 1)percent_derating = 1;
+			 				 otp_duty_cycle = (over_temp_duty_cycle * percent_derating);
 
-//			 	  			 for (i= 0; i <= N(K); i++)
-//			 	  			 {
-//			 	  				otp_sum -= otp_circ_buf[i];
-//			 	  				otp_circ_buf[i] = duty_cycle_setpoint;
-//			 	  				otp_sum += otp_circ_buf[i];
-//			 	  			 }
-//
-//			 	  			 otp_duty_filt = (uint16_t)(otp_sum >> K);
-//			 	  			 i = 0;
-//			 	  			otp_duty_filt = duty_cycle_setpoint;
-//			 				otp_flag = 0;
-//			 	  		  }
+			 				otp_duty_cycle_sum -= otp_circ_buf[otp_circ_buf_ptr]; // Subtract the oldest value from the sum.
 
-//			 	  		     over_temp_duty_cycle = duty_cycle_setpoint;
-//			 				 percent_derating = (ntc_temp * ORDINATE) + ABSCISSA;
-//			 				 if (percent_derating > 1) percent_derating = 1;
-//			 				 derated_value = (otp_duty_filt * percent_derating);
-//
-//			 				 otp_sum -=  otp_circ_buf[otp_circ_buf_ptr];
-//			 				 otp_circ_buf[otp_circ_buf_ptr] = derated_value;
-//			 				 otp_sum += otp_circ_buf[otp_circ_buf_ptr++];
-//			 				 otp_circ_buf_ptr %= N(K);
-//			 				 otp_duty_filt = (uint16_t)(otp_sum >> K);
-//
-//
-//
-//
-//			 				 duty_cycle_setpoint = otp_duty_filt;
-//
-//
-//
-//
-//
+			 				otp_circ_buf[otp_circ_buf_ptr] = otp_duty_cycle; // Place the input in the filter register.
 
-//			 			 }
+			 				otp_duty_cycle_sum += otp_circ_buf[otp_circ_buf_ptr++]; // Ad the newest value to the sum.
+
+			 				otp_circ_buf_ptr %= N(K); // Increment the buffer keeping it in the range 0 to N-1;
+
+			 				duty_cycle_setpoint = (uint16_t)(otp_duty_cycle_sum>>K);
+			 			 }
 			 			 HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_4);
 //			 			 TIM1->CCR1 = duty_cycle_setpoint;   //Timer1 period is 8192
 			 }
