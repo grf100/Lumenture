@@ -163,7 +163,7 @@ int main(void)
 	cs1 = 0;
 	cs2 = 0;
 	state = STANDBY;
-	uint16_t max_current[8] = {
+	float max_current[8] = {
 			SCALED_CURRENT_LEVEL_1,
 			SCALED_CURRENT_LEVEL_2,
 			SCALED_CURRENT_LEVEL_3,
